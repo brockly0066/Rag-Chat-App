@@ -1,0 +1,264 @@
+import streamlit as st
+import google.generativeai as genai
+from PyPDF2 import PdfReader
+import pandas as pd
+import os
+
+st.set_page_config(
+    page_title="Chat with Your Data | RAG System",
+    page_icon="🧠",
+    layout="wide"
+)
+
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&display=swap');
+    
+    html, body, [class*="css"] { font-family: 'Syne', sans-serif; }
+    
+    .main { background-color: #0a0a0f; }
+    
+    .stApp { background-color: #0a0a0f; color: #f0f0f5; }
+    
+    .hero-title {
+        font-size: 2.8rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #6c63ff, #00d4aa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.5rem;
+    }
+    
+    .hero-sub {
+        color: #8888a8;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .chat-user {
+        background: #1a1a24;
+        border-left: 3px solid #6c63ff;
+        padding: 1rem 1.25rem;
+        border-radius: 0 12px 12px 0;
+        margin: 0.75rem 0;
+        color: #f0f0f5;
+    }
+    
+    .chat-ai {
+        background: #13131a;
+        border-left: 3px solid #00d4aa;
+        padding: 1rem 1.25rem;
+        border-radius: 0 12px 12px 0;
+        margin: 0.75rem 0;
+        color: #f0f0f5;
+    }
+    
+    .source-badge {
+        background: rgba(108,99,255,0.15);
+        border: 1px solid rgba(108,99,255,0.3);
+        border-radius: 6px;
+        padding: 0.2rem 0.6rem;
+        font-size: 0.75rem;
+        color: #6c63ff;
+        margin-right: 0.4rem;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #6c63ff, #8b84ff);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.6rem 1.5rem;
+        font-family: 'Syne', sans-serif;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 20px rgba(108,99,255,0.4);
+    }
+
+    .stTextInput > div > div > input {
+        background: #1a1a24;
+        border: 1px solid #2a2a3a;
+        border-radius: 8px;
+        color: #f0f0f5;
+    }
+
+    .stFileUploader {
+        background: #13131a;
+        border: 1px dashed #2a2a3a;
+        border-radius: 12px;
+        padding: 1rem;
+    }
+
+    div[data-testid="stSidebar"] {
+        background-color: #13131a;
+        border-right: 1px solid #2a2a3a;
+    }
+
+    .stat-box {
+        background: #1a1a24;
+        border: 1px solid #2a2a3a;
+        border-radius: 12px;
+        padding: 1rem;
+        text-align: center;
+        margin: 0.5rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+def setup_gemini(api_key):
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel("gemini-1.5-flash")
+
+def extract_pdf_text(pdf_file):
+    reader = PdfReader(pdf_file)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() or ""
+    return text
+
+def extract_table_text(file):
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+    return df.to_string(index=False), df
+
+def chunk_text(text, chunk_size=1500, overlap=200):
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start += chunk_size - overlap
+    return chunks
+
+def find_relevant_chunks(query, chunks, top_k=4):
+    query_words = set(query.lower().split())
+    scored = []
+    for i, chunk in enumerate(chunks):
+        chunk_words = set(chunk.lower().split())
+        score = len(query_words & chunk_words)
+        scored.append((score, i, chunk))
+    scored.sort(reverse=True)
+    return [chunk for _, _, chunk in scored[:top_k]]
+
+def ask_gemini(model, question, context, chat_history):
+    history_text = ""
+    for msg in chat_history[-4:]:
+        history_text += f"{msg['role'].upper()}: {msg['content']}\n"
+
+    prompt = f"""You are a helpful AI assistant. Answer the user's question based ONLY on the provided document context below.
+If the answer is not in the context, say "I couldn't find that in the uploaded documents."
+
+DOCUMENT CONTEXT:
+{context}
+
+CHAT HISTORY:
+{history_text}
+
+USER QUESTION: {question}
+
+Give a clear, accurate, and helpful answer:"""
+
+    response = model.generate_content(prompt)
+    return response.text
+
+with st.sidebar:
+    st.markdown("### 🔑 API Configuration")
+    api_key = st.text_input("Enter your Gemini API Key", type="password", placeholder="AIza...")
+    
+    st.markdown("---")
+    st.markdown("### 📁 Upload Documents")
+    uploaded_files = st.file_uploader(
+        "Upload PDFs or Excel files",
+        type=["pdf", "xlsx", "xls", "csv"],
+        accept_multiple_files=True,
+        help="Upload one or more documents to chat with"
+    )
+
+    if uploaded_files:
+        st.markdown("**Uploaded files:**")
+        for f in uploaded_files:
+            st.markdown(f"✅ `{f.name}`")
+
+    st.markdown("---")
+    if st.button("🗑️ Clear Chat"):
+        st.session_state.messages = []
+        st.session_state.chunks = []
+        st.session_state.doc_names = []
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("**Built by** [Sreevardhan](https://mrvardhan006.github.io)")
+    st.markdown("**Stack:** Gemini AI · Python · Streamlit")
+
+st.markdown('<div class="hero-title">🧠 Chat with Your Data</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-sub">Upload PDFs or Excel files and ask questions — powered by Google Gemini AI</div>', unsafe_allow_html=True)
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "chunks" not in st.session_state:
+    st.session_state.chunks = []
+if "doc_names" not in st.session_state:
+    st.session_state.doc_names = []
+
+if uploaded_files and api_key:
+    current_names = [f.name for f in uploaded_files]
+    if current_names != st.session_state.doc_names:
+        with st.spinner("📖 Reading and processing your documents..."):
+            all_chunks = []
+            for file in uploaded_files:
+                if file.name.endswith(".pdf"):
+                    text = extract_pdf_text(file)
+                    chunks = chunk_text(text)
+                    all_chunks.extend(chunks)
+                else:
+                    text, _ = extract_table_text(file)
+                    chunks = chunk_text(text)
+                    all_chunks.extend(chunks)
+
+            st.session_state.chunks = all_chunks
+            st.session_state.doc_names = current_names
+        st.success(f"✅ {len(uploaded_files)} document(s) processed! {len(all_chunks)} text chunks ready.")
+
+if st.session_state.chunks:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("📄 Documents", len(st.session_state.doc_names))
+    with col2:
+        st.metric("🧩 Text Chunks", len(st.session_state.chunks))
+    with col3:
+        st.metric("💬 Messages", len(st.session_state.messages))
+
+st.markdown("---")
+
+for msg in st.session_state.messages:
+    if msg["role"] == "user":
+        st.markdown(f'<div class="chat-user">👤 <strong>You:</strong> {msg["content"]}</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="chat-ai">🤖 <strong>AI:</strong> {msg["content"]}</div>', unsafe_allow_html=True)
+
+if not api_key:
+    st.info("👈 Please enter your **Gemini API Key** in the sidebar to get started.")
+elif not uploaded_files:
+    st.info("👈 Please **upload at least one PDF or Excel file** in the sidebar.")
+else:
+    question = st.chat_input("Ask anything about your documents...")
+    if question:
+        st.session_state.messages.append({"role": "user", "content": question})
+
+        with st.spinner("🤔 Thinking..."):
+            try:
+                model = setup_gemini(api_key)
+                relevant = find_relevant_chunks(question, st.session_state.chunks)
+                context = "\n\n---\n\n".join(relevant)
+                answer = ask_gemini(model, question, context, st.session_state.messages)
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+
+        st.rerun()
