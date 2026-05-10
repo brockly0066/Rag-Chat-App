@@ -192,11 +192,19 @@ Give a clear, accurate, and helpful answer:"""
 # MAIN APP
 # =====================
 
+# --- Load API Key from Streamlit Secrets ---
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    api_key = None
+
 # --- Sidebar ---
 with st.sidebar:
-    st.markdown("### 🔑 API Configuration")
-    api_key = st.text_input("Enter your Gemini API Key", type="password", placeholder="AIza...")
-    
+    if not api_key:
+        st.warning("⚠️ API key not configured.")
+    else:
+        st.success("✅ Gemini AI Connected")
+
     st.markdown("---")
     st.markdown("### 📁 Upload Documents")
     uploaded_files = st.file_uploader(
