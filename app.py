@@ -4,12 +4,14 @@ from PyPDF2 import PdfReader
 import pandas as pd
 import os
 
+# --- Page Config ---
 st.set_page_config(
     page_title="Chat with Your Data | RAG System",
     page_icon="🧠",
     layout="wide"
 )
 
+# --- Custom CSS ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&display=swap');
@@ -109,10 +111,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- Gemini Setup ---
 def setup_gemini(api_key):
-    genai.configure(api_key=api_key)
+    genai.configure(api_key=api_key.strip())
     return genai.GenerativeModel("gemini-1.5-flash")
 
+# --- Extract Text from PDF ---
 def extract_pdf_text(pdf_file):
     reader = PdfReader(pdf_file)
     text = ""
@@ -120,6 +124,7 @@ def extract_pdf_text(pdf_file):
         text += page.extract_text() or ""
     return text
 
+# --- Extract Text from Excel/CSV ---
 def extract_table_text(file):
     if file.name.endswith(".csv"):
         df = pd.read_csv(file)
@@ -127,6 +132,7 @@ def extract_table_text(file):
         df = pd.read_excel(file)
     return df.to_string(index=False), df
 
+# --- Simple Chunking ---
 def chunk_text(text, chunk_size=1500, overlap=200):
     chunks = []
     start = 0
@@ -136,6 +142,7 @@ def chunk_text(text, chunk_size=1500, overlap=200):
         start += chunk_size - overlap
     return chunks
 
+# --- Find Relevant Chunks (keyword-based RAG) ---
 def find_relevant_chunks(query, chunks, top_k=4):
     query_words = set(query.lower().split())
     scored = []
@@ -146,6 +153,7 @@ def find_relevant_chunks(query, chunks, top_k=4):
     scored.sort(reverse=True)
     return [chunk for _, _, chunk in scored[:top_k]]
 
+# --- Ask Gemini ---
 def ask_gemini(model, question, context, chat_history):
     history_text = ""
     for msg in chat_history[-4:]:
@@ -167,6 +175,11 @@ Give a clear, accurate, and helpful answer:"""
     response = model.generate_content(prompt)
     return response.text
 
+# =====================
+# MAIN APP
+# =====================
+
+# --- Sidebar ---
 with st.sidebar:
     st.markdown("### 🔑 API Configuration")
     api_key = st.text_input("Enter your Gemini API Key", type="password", placeholder="AIza...")
@@ -196,9 +209,11 @@ with st.sidebar:
     st.markdown("**Built by** [Sreevardhan](https://mrvardhan006.github.io)")
     st.markdown("**Stack:** Gemini AI · Python · Streamlit")
 
+# --- Main Area ---
 st.markdown('<div class="hero-title">🧠 Chat with Your Data</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">Upload PDFs or Excel files and ask questions — powered by Google Gemini AI</div>', unsafe_allow_html=True)
 
+# --- Init session state ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "chunks" not in st.session_state:
@@ -206,6 +221,7 @@ if "chunks" not in st.session_state:
 if "doc_names" not in st.session_state:
     st.session_state.doc_names = []
 
+# --- Process uploaded files ---
 if uploaded_files and api_key:
     current_names = [f.name for f in uploaded_files]
     if current_names != st.session_state.doc_names:
@@ -225,6 +241,7 @@ if uploaded_files and api_key:
             st.session_state.doc_names = current_names
         st.success(f"✅ {len(uploaded_files)} document(s) processed! {len(all_chunks)} text chunks ready.")
 
+# --- Stats row ---
 if st.session_state.chunks:
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -236,12 +253,14 @@ if st.session_state.chunks:
 
 st.markdown("---")
 
+# --- Chat History ---
 for msg in st.session_state.messages:
     if msg["role"] == "user":
         st.markdown(f'<div class="chat-user">👤 <strong>You:</strong> {msg["content"]}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="chat-ai">🤖 <strong>AI:</strong> {msg["content"]}</div>', unsafe_allow_html=True)
 
+# --- Input ---
 if not api_key:
     st.info("👈 Please enter your **Gemini API Key** in the sidebar to get started.")
 elif not uploaded_files:
@@ -251,14 +270,18 @@ else:
     if question:
         st.session_state.messages.append({"role": "user", "content": question})
 
-        with st.spinner("🤔 Thinking..."):
-            try:
-                model = setup_gemini(api_key)
+    with st.spinner("🤔 Thinking..."):
+        try:
+            api_key_clean = api_key.strip()
+            if not api_key_clean or len(api_key_clean) < 10:
+                st.error("❌ Please enter a valid Gemini API key in the sidebar.")
+            else:
+                model = setup_gemini(api_key_clean)
                 relevant = find_relevant_chunks(question, st.session_state.chunks)
                 context = "\n\n---\n\n".join(relevant)
                 answer = ask_gemini(model, question, context, st.session_state.messages)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+        except Exception as e:
+            st.error(f"❌ Error: {str(e)}")
 
         st.rerun()
