@@ -118,22 +118,32 @@ def setup_gemini(api_key):
 
 # --- Extract Text from PDF ---
 def extract_pdf_text(pdf_file):
-    reader = PdfReader(pdf_file)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() or ""
-    return text
+    try:
+        reader = PdfReader(pdf_file)
+        text = ""
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+        return text if text.strip() else "No readable text found in this PDF."
+    except Exception as e:
+        return f"Error reading PDF: {str(e)}"
 
 # --- Extract Text from Excel/CSV ---
 def extract_table_text(file):
-    if file.name.endswith(".csv"):
-        df = pd.read_csv(file)
-    else:
-        df = pd.read_excel(file)
-    return df.to_string(index=False), df
+    try:
+        if file.name.endswith(".csv"):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
+        return df.to_string(index=False), df
+    except Exception as e:
+        return f"Error reading file: {str(e)}", None
 
 # --- Simple Chunking ---
 def chunk_text(text, chunk_size=1500, overlap=200):
+    if not text or not text.strip():
+        return ["No content available."]
     chunks = []
     start = 0
     while start < len(text):
@@ -144,14 +154,17 @@ def chunk_text(text, chunk_size=1500, overlap=200):
 
 # --- Find Relevant Chunks (keyword-based RAG) ---
 def find_relevant_chunks(query, chunks, top_k=4):
+    if not chunks:
+        return ["No document content available."]
     query_words = set(query.lower().split())
     scored = []
     for i, chunk in enumerate(chunks):
-        chunk_words = set(chunk.lower().split())
-        score = len(query_words & chunk_words)
-        scored.append((score, i, chunk))
+        if chunk and isinstance(chunk, str):
+            chunk_words = set(chunk.lower().split())
+            score = len(query_words & chunk_words)
+            scored.append((score, i, chunk))
     scored.sort(reverse=True)
-    return [chunk for _, _, chunk in scored[:top_k]]
+    return [chunk for _, _, chunk in scored[:top_k]] if scored else chunks[:top_k]
 
 # --- Ask Gemini ---
 def ask_gemini(model, question, context, chat_history):
