@@ -170,7 +170,9 @@ def find_relevant_chunks(query, chunks, top_k=4):
 def ask_gemini(model, question, context, chat_history):
     history_text = ""
     for msg in chat_history[-4:]:
-        history_text += f"{msg['role'].upper()}: {msg['content']}\n"
+        role = str(msg.get('role', '')).upper()
+        content = str(msg.get('content', ''))
+        history_text += f"{role}: {content}\n"
 
     prompt = f"""You are a helpful AI assistant. Answer the user's question based ONLY on the provided document context below.
 If the answer is not in the context, say "I couldn't find that in the uploaded documents."
@@ -201,7 +203,7 @@ except Exception:
 # --- Sidebar ---
 with st.sidebar:
     if not api_key:
-        st.warning("⚠️ API key not configured")
+        st.warning("⚠️ API key not configured.")
     else:
         st.success("✅ Gemini AI Connected")
 
