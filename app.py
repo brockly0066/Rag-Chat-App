@@ -201,7 +201,7 @@ except Exception:
 # --- Sidebar ---
 with st.sidebar:
     if not api_key:
-        st.warning("⚠️ API key not configured.")
+        st.warning("⚠️ API key not configured")
     else:
         st.success("✅ Gemini AI Connected")
 
