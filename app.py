@@ -194,7 +194,7 @@ Give a clear, accurate, and helpful answer:"""
 
 # --- Load API Key from Streamlit Secrets ---
 try:
-    api_key = st.secrets["GEMINI_API_KEY"]
+    api_key = st.secrets["AIzaSyCPS7956KxWza0ys7Hhxtw_3_p7K0SnmDY"]
 except Exception:
     api_key = None
 
