@@ -136,6 +136,7 @@ def extract_table_text(file):
             df = pd.read_csv(file)
         else:
             df = pd.read_excel(file)
+        df = df.fillna("").astype(str)
         return df.to_string(index=False), df
     except Exception as e:
         return f"Error reading file: {str(e)}", None
