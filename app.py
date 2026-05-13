@@ -301,6 +301,6 @@ else:
                 context = "\n\n---\n\n".join([str(c) for c in relevant if c])
                 answer = ask_gemini(model, question, context, st.session_state.messages)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
+                st.rerun()
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
-        st.rerun()
