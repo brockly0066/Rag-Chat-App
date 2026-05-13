@@ -291,21 +291,16 @@ elif not uploaded_files:
     st.info("👈 Please **upload at least one PDF or Excel file** in the sidebar.")
 else:
     question = st.chat_input("Ask anything about your documents...")
-    if question:
+    if question and question.strip():
         st.session_state.messages.append({"role": "user", "content": question})
-
-    with st.spinner("🤔 Thinking..."):
-        try:
-            api_key_clean = api_key.strip()
-            if not api_key_clean or len(api_key_clean) < 10:
-                st.error("❌ Please enter a valid Gemini API key in the sidebar.")
-            else:
+        with st.spinner("🤔 Thinking..."):
+            try:
+                api_key_clean = str(api_key).strip()
                 model = setup_gemini(api_key_clean)
                 relevant = find_relevant_chunks(question, st.session_state.chunks)
-                context = "\n\n---\n\n".join(relevant)
+                context = "\n\n---\n\n".join([str(c) for c in relevant if c])
                 answer = ask_gemini(model, question, context, st.session_state.messages)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
-
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
         st.rerun()
