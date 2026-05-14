@@ -326,6 +326,10 @@ else:
                 api_key_clean = str(api_key).strip()
                 model = setup_gemini(api_key_clean)
                 relevant = find_relevant_chunks(question, st.session_state.chunks, top_k=6)
+                # Always include the first chunk (summary) in context
+                first_chunk = st.session_state.chunks[0] if st.session_state.chunks else ""
+                if first_chunk not in relevant:
+                    relevant = [first_chunk] + relevant
                 context = "\n\n---\n\n".join([str(c) for c in relevant if c])
                 answer = ask_gemini(model, question, context, st.session_state.messages)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
