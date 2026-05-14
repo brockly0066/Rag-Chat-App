@@ -149,7 +149,7 @@ def extract_table_text(file):
         return f"Error reading file: {str(e)}", None
 
 # --- Simple Chunking ---
-def chunk_text(text, chunk_size=1500, overlap=200):
+def chunk_text(text, chunk_size=3000, overlap=200):
     if not text or not text.strip():
         return ["No content available."]
     chunks = []
@@ -267,14 +267,25 @@ if uploaded_files and api_key:
                 if file.name.endswith(".pdf"):
                     text = extract_pdf_text(file)
                     chunks = chunk_text(text)
-                    # Tag each chunk with filename
                     tagged = [f"[Source: {file.name}]\n{c}" for c in chunks]
                     all_chunks.extend(tagged)
                 else:
-                    text, _ = extract_table_text(file)
-                    chunks = chunk_text(text)
-                    tagged = [f"[Source: {file.name}]\n{c}" for c in chunks]
-                    all_chunks.extend(tagged)
+                    # Read ALL sheets and tag each one
+                    try:
+                        all_sheets = pd.read_excel(file, sheet_name=None)
+                        sheet_names = list(all_sheets.keys())
+                        header = f"[Source: {file.name}] [Sheets: {', '.join(sheet_names)}]\n"
+                        all_chunks.append(header + f"This Excel file has {len(sheet_names)} sheets: {', '.join(sheet_names)}")
+                        for sheet_name, df in all_sheets.items():
+                            df = df.fillna("").astype(str)
+                            sheet_text = f"[Source: {file.name}] [Sheet: {sheet_name}]\n{df.to_string(index=False)}"
+                            chunks = chunk_text(sheet_text)
+                            all_chunks.extend(chunks)
+                    except Exception as e:
+                        text, _ = extract_table_text(file)
+                        chunks = chunk_text(text)
+                        tagged = [f"[Source: {file.name}]\n{c}" for c in chunks]
+                        all_chunks.extend(tagged)
 
             st.session_state.chunks = all_chunks
             st.session_state.doc_names = current_names
