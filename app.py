@@ -274,8 +274,10 @@ if uploaded_files and api_key:
                     try:
                         all_sheets = pd.read_excel(file, sheet_name=None)
                         sheet_names = list(all_sheets.keys())
-                        header = f"[Source: {file.name}] [Sheets: {', '.join(sheet_names)}]\n"
-                        all_chunks.append(header + f"This Excel file has {len(sheet_names)} sheets: {', '.join(sheet_names)}")
+                        # First chunk: summary of ALL sheets
+                        summary = f"[Source: {file.name}]\nThis Excel file contains exactly {len(sheet_names)} sheets: {', '.join(sheet_names)}\n"
+                        all_chunks.append(summary)
+                        # Then one chunk per sheet
                         for sheet_name, df in all_sheets.items():
                             df = df.fillna("").astype(str)
                             sheet_text = f"[Source: {file.name}] [Sheet: {sheet_name}]\n{df.to_string(index=False)}"
