@@ -134,10 +134,17 @@ def extract_table_text(file):
     try:
         if file.name.endswith(".csv"):
             df = pd.read_csv(file)
+            df = df.fillna("").astype(str)
+            return df.to_string(index=False), df
         else:
-            df = pd.read_excel(file)
-        df = df.fillna("").astype(str)
-        return df.to_string(index=False), df
+            # Read ALL sheets
+            all_sheets = pd.read_excel(file, sheet_name=None)
+            full_text = ""
+            for sheet_name, df in all_sheets.items():
+                df = df.fillna("").astype(str)
+                full_text += f"\n\n=== Sheet: {sheet_name} ===\n"
+                full_text += df.to_string(index=False)
+            return full_text, None
     except Exception as e:
         return f"Error reading file: {str(e)}", None
 
@@ -175,10 +182,15 @@ def ask_gemini(model, question, context, chat_history):
         content = str(msg.get('content', ''))
         history_text += f"{role}: {content}\n"
 
-    prompt = f"""You are a helpful AI assistant. Answer the user's question based ONLY on the provided document context below.
-If the answer is not in the context, say "I couldn't find that in the uploaded documents."
+    prompt = f"""You are a helpful AI assistant. The user has uploaded the following documents: {", ".join(st.session_state.doc_names)}.
 
-DOCUMENT CONTEXT:
+Answer the user's question based on ALL the document content provided below.
+- Each chunk is tagged with its source file in [Source: filename] format
+- If the user doesn't specify a file, search across ALL documents
+- If the answer requires calculation (totals, averages, percentages), perform it using numbers from the context
+- If the answer is truly not in any document, say "I couldn't find that in the uploaded documents"
+
+DOCUMENT CONTENT:
 {context}
 
 CHAT HISTORY:
@@ -186,7 +198,7 @@ CHAT HISTORY:
 
 USER QUESTION: {question}
 
-Give a clear, accurate, and helpful answer:"""
+Give a clear, helpful answer. Show calculation working if needed:"""
 
     response = model.generate_content(prompt)
     return response.text
@@ -255,11 +267,14 @@ if uploaded_files and api_key:
                 if file.name.endswith(".pdf"):
                     text = extract_pdf_text(file)
                     chunks = chunk_text(text)
-                    all_chunks.extend(chunks)
+                    # Tag each chunk with filename
+                    tagged = [f"[Source: {file.name}]\n{c}" for c in chunks]
+                    all_chunks.extend(tagged)
                 else:
                     text, _ = extract_table_text(file)
                     chunks = chunk_text(text)
-                    all_chunks.extend(chunks)
+                    tagged = [f"[Source: {file.name}]\n{c}" for c in chunks]
+                    all_chunks.extend(tagged)
 
             st.session_state.chunks = all_chunks
             st.session_state.doc_names = current_names
@@ -297,7 +312,7 @@ else:
             try:
                 api_key_clean = str(api_key).strip()
                 model = setup_gemini(api_key_clean)
-                relevant = find_relevant_chunks(question, st.session_state.chunks)
+                relevant = find_relevant_chunks(question, st.session_state.chunks, top_k=6)
                 context = "\n\n---\n\n".join([str(c) for c in relevant if c])
                 answer = ask_gemini(model, question, context, st.session_state.messages)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
