@@ -328,7 +328,7 @@ else:
             try:
                 api_key_clean = str(api_key).strip()
                 model = setup_gemini(api_key_clean)
-                relevant = find_relevant_chunks(question, st.session_state.chunks, top_k=6)
+                relevant = st.session_state.chunks
                 # Always include the first chunk (summary) in context
                 first_chunk = st.session_state.chunks[0] if st.session_state.chunks else ""
                 if first_chunk not in relevant:
