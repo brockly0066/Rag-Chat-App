@@ -114,7 +114,7 @@ st.markdown("""
 # --- Gemini Setup ---
 def setup_gemini(api_key):
     genai.configure(api_key=api_key.strip())
-    return genai.GenerativeModel("gemini-1.0-pro")
+    return genai.GenerativeModel("gemini-2.5-flash")
 
 # --- Extract Text from PDF ---
 def extract_pdf_text(pdf_file):
