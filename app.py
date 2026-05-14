@@ -175,7 +175,7 @@ def find_relevant_chunks(query, chunks, top_k=4):
     return [chunk for _, _, chunk in scored[:top_k]] if scored else chunks[:top_k]
 
 # --- Ask Gemini ---
-def ask_gemini(model, question, context, chat_history):
+def ask_gemini(model, question, context, chat_history, sheet_info=""):
     history_text = ""
     for msg in chat_history[-4:]:
         role = str(msg.get('role', '')).upper()
@@ -183,6 +183,7 @@ def ask_gemini(model, question, context, chat_history):
         history_text += f"{role}: {content}\n"
 
     prompt = f"""You are a helpful AI assistant. The user has uploaded the following documents: {", ".join(st.session_state.doc_names)}.
+{f"IMPORTANT FILE STRUCTURE INFO: {sheet_info}" if sheet_info else ""}
 
 Answer the user's question based on ALL the document content provided below.
 - Each chunk is tagged with its source file in [Source: filename] format
@@ -239,6 +240,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.chunks = []
         st.session_state.doc_names = []
+        st.session_state.sheet_info = ""
         st.rerun()
 
     st.markdown("---")
@@ -256,6 +258,8 @@ if "chunks" not in st.session_state:
     st.session_state.chunks = []
 if "doc_names" not in st.session_state:
     st.session_state.doc_names = []
+if "sheet_info" not in st.session_state:
+    st.session_state.sheet_info = ""
 
 # --- Process uploaded files ---
 if uploaded_files and api_key:
@@ -274,10 +278,9 @@ if uploaded_files and api_key:
                     try:
                         all_sheets = pd.read_excel(file, sheet_name=None)
                         sheet_names = list(all_sheets.keys())
-                        # First chunk: summary of ALL sheets
+                        st.session_state.sheet_info += f"\nFile '{file.name}' has exactly {len(sheet_names)} sheets: {', '.join(sheet_names)}."
                         summary = f"[Source: {file.name}]\nThis Excel file contains exactly {len(sheet_names)} sheets: {', '.join(sheet_names)}\n"
                         all_chunks.append(summary)
-                        # Then one chunk per sheet
                         for sheet_name, df in all_sheets.items():
                             df = df.fillna("").astype(str)
                             sheet_text = f"[Source: {file.name}] [Sheet: {sheet_name}]\n{df.to_string(index=False)}"
@@ -331,7 +334,7 @@ else:
                 if first_chunk not in relevant:
                     relevant = [first_chunk] + relevant
                 context = "\n\n---\n\n".join([str(c) for c in relevant if c])
-                answer = ask_gemini(model, question, context, st.session_state.messages)
+                answer = ask_gemini(model, question, context, st.session_state.messages, st.session_state.sheet_info)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
                 st.rerun()
             except Exception as e:
